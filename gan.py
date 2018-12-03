@@ -28,7 +28,7 @@ tf.set_random_seed(manualSeed)
 # make dictionary of lists of all bounding boxes
 bbox_file = "WIDER_val/wider_face_split/wider_face_val_bbx_gt.txt"
 
-min_image_size = 16
+min_image_size = 64
 image_size_in = (16, 16, 3)
 image_size_up = (64, 64, 3)
 
@@ -61,8 +61,8 @@ def data_generator():
                     sub_image = current_image[y:y+h, x:x+w]
                     full_image = skimage.transform.resize(sub_image, (image_size_up[0], image_size_up[1]), anti_aliasing=True, mode="constant")
                     small_image = skimage.transform.resize(sub_image, (image_size_in[0], image_size_in[1]), anti_aliasing=True, mode="constant")
-                    full_image = np.array(full_image, dtype=np.float32)
-                    small_image = np.array(small_image, dtype=np.float32)
+                    full_image = np.rot90(np.array(full_image, dtype=np.float32))
+                    small_image = np.rot90(np.array(small_image, dtype=np.float32))
 
                     yield (full_image, small_image, 1)
 
@@ -75,7 +75,8 @@ def data_generator():
                     y = random.randint(0, total_h - h)
                     full_image = current_image[y:y+h, x:x+w]
                     small_image = skimage.transform.resize(full_image, (image_size_in[0], image_size_in[1]), anti_aliasing=True, mode="constant")
-                    small_image = np.array(small_image, dtype=np.float32)
+                    full_image = np.rot90(full_image)
+                    small_image = np.rot90(np.array(small_image, dtype=np.float32))
 
                     yield (full_image, small_image, 0)
 
@@ -291,11 +292,25 @@ learning_rate = tf.placeholder(tf.float32, shape=[])
 G_opt = tf.train.AdamOptimizer(learning_rate).minimize(G_loss, var_list=G_vars)
 D_opt = tf.train.AdamOptimizer(learning_rate).minimize(D_loss, var_list=D_vars)
 
-num_test_samples = 16
+num_test_samples = 25
 _, (test_batch, test_small_images, test_labels) = next(batch_generator(num_test_samples))
 
 # Create logger instance
 logger = Logger(model_name='FACEGAN')
+
+# Write out ground truth examples, and "dumb" upscaled examples
+logger.log_images(
+    test_batch, num_test_samples,
+    -1, 0, num_batches
+)
+compare_images = []
+for i in range(num_test_samples):
+    compare_images += [skimage.transform.resize(test_small_images[i], (image_size_up[0], image_size_up[1]), anti_aliasing=True, mode="constant")]
+compare_images = np.stack(compare_images)
+logger.log_images(
+    compare_images, num_test_samples,
+    -1, 1, num_batches
+)
 
 # Total number of epochs to train
 num_epochs = 10
