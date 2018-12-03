@@ -33,7 +33,7 @@ image_size_in = (16, 16, 3)
 image_size_up = (64, 64, 3)
 
 #making a dictionary for vgg19 values
-data_dict = np.load('vgg16_weights.npy', encoding='latin1').item()
+data_dict = np.load('vgg19.npy', encoding='latin1').item()
 
 def data_generator():
     with open(bbox_file) as f:
@@ -157,29 +157,29 @@ def discriminator(x):
         return out
 
 
-def avg_pool(self, bottom, name):
+def avg_pool(bottom, name):
         return tf.nn.avg_pool(bottom, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME', name=name)
 
-def max_pool(self, bottom, name):
+def max_pool(bottom, name):
     return tf.nn.max_pool(bottom, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME', name=name)
 
-def conv_layer(self, bottom, name):
+def conv_layer(bottom, name):
     with tf.variable_scope(name):
-        filt = self.get_conv_filter(name)
+        filt = get_conv_filter(name)
 
         conv = tf.nn.conv2d(bottom, filt, [1, 1, 1, 1], padding='SAME')
 
-        conv_biases = self.get_bias(name)
+        conv_biases = get_bias(name)
         bias = tf.nn.bias_add(conv, conv_biases)
 
         relu = tf.nn.relu(bias)
         return relu
 
-def get_conv_filter(self, name):
-    return tf.constant(self.data_dict[name][0], name="filter")
+def get_conv_filter(name):
+    return tf.constant(data_dict[name][0], name="filter")
 
-def get_bias(self, name):
-    return tf.constant(self.data_dict[name][1], name="biases")
+def get_bias(name):
+    return tf.constant(data_dict[name][1], name="biases")
 """End of Addition"""
 
 def generator(x):
