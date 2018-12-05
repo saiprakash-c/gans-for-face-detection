@@ -46,7 +46,7 @@ def data_generator():
                 image_name = line
                 file_name = "WIDER_train/images/{}".format(image_name)
                 current_image = mpimg.imread(file_name)
-                current_image = np.array(current_image, dtype=np.float32) / 255.0
+                current_image = np.array(current_image, dtype=np.float32) / 255.0 * 2.0 - 1.0
             elif bboxes_left is None:
                 bboxes_left = int(line)
             else:
@@ -144,13 +144,12 @@ def discriminator(x):
             conv5_2 = conv_layer(conv5_1, "conv5_2")
             conv5_3 = conv_layer(conv5_2, "conv5_3")
             conv5_4 = conv_layer(conv5_3, "conv5_4")
-            #pool5 = max_pool(conv5_4, "pool5")
 
         #fully connected layer to determine if the image is fake or real
 
         with tf.variable_scope("linear"):
             linear = layers.flatten(conv5_4)
-            linear = layers.dense(linear, 2, use_bias=False)
+            linear = layers.dense(linear, 2, use_bias=False, kernel_initializer=tf.initializers.random_normal(0.0, 0.1))
 
         with tf.variable_scope("out"):
             out = nn.sigmoid(linear)
@@ -184,7 +183,7 @@ def get_bias(name):
 """End of Addition"""
 
 def generator(x):
-    with tf.variable_scope("generator", reuse=tf.AUTO_REUSE):
+    with tf.variable_scope("generator_sr", reuse=tf.AUTO_REUSE, initializer=tf.initializers.random_normal(0.0, 0.02)):
         with tf.variable_scope("conv1"):
             conv1 = layers.conv2d(x, 64, 3, strides=1, padding="same")
             conv1 = layers.batch_normalization(conv1, scale=False)
@@ -219,16 +218,16 @@ def generator(x):
 
         with tf.variable_scope("conv6"):
             conv6 = layers.conv2d(deconv5, 3, 1, strides=1, padding="same")
-            conv6 = nn.relu(conv6)
 
         with tf.variable_scope("out"):
             out = nn.tanh(conv6)
 
     #Adding Refinement network
-
-    with tf.variable_scope("generator2", reuse=tf.AUTO_REUSE):
+    with tf.variable_scope("generator_rf", reuse=tf.AUTO_REUSE, initializer=tf.initializers.random_normal(0.0, 0.02)):
         with tf.variable_scope("conv1"):
-            conv1 = layers.conv2d(conv6, 64, 3, strides=1, padding="same")
+            conv6 = layers.batch_normalization(conv6, scale=False)
+            conv6 = nn.relu(conv6)
+            conv1 = layers.conv2d(conv1, 64, 3, strides=1, padding="same")
             conv1 = layers.batch_normalization(conv1, scale=False)
             conv1 = nn.relu(conv1)
 
@@ -261,12 +260,11 @@ def generator(x):
 
         with tf.variable_scope("conv6"):
             conv6 = layers.conv2d(conv5, 3, 3, strides=1, padding="same")
-            conv6 = nn.relu(conv6)
 
         with tf.variable_scope("out"):
             out2 = nn.tanh(conv6)
 
-    return out,out2
+    return out, out2
 
 # real input (full size)
 X = tf.placeholder(tf.float32, shape=(None, ) + image_size_up)
@@ -276,17 +274,18 @@ X_labels = tf.placeholder(tf.float32, shape=(None, 1))
 Z = tf.placeholder(tf.float32, shape=(None, ) + image_size_in)
 
 # Generator
-G_sample,G_sample2 = generator(Z)
+G_sample, G_sample2 = generator(Z)
 # Discriminator, has two outputs [face (1.0) vs nonface (0.0), real (1.0) vs generated (0.0)]
 D_real = discriminator(X)
 D_real_face = tf.slice(D_real, [0, 0], [-1, 1])
 D_real_real = tf.slice(D_real, [0, 1], [-1, 1])
-D_fake = discriminator(G_sample)
+D_fake = discriminator(G_sample2)
 D_fake_face = tf.slice(D_fake, [0, 0], [-1, 1])
 D_fake_real = tf.slice(D_fake, [0, 1], [-1, 1])
 
 # Generator, MSE pixel-wise loss
-G_pixel_loss = tf.reduce_mean((G_sample - X)**2) + tf.reduce_mean((G_sample2 - X)**2)
+G_SR_pixel_loss = tf.reduce_mean((G_sample - X)**2)
+G_pixel_loss = G_SR_pixel_loss + tf.reduce_mean((G_sample2 - X)**2)
 G_adversarial_loss = tf.reduce_mean(
     nn.sigmoid_cross_entropy_with_logits(
         logits=D_fake_real, labels=tf.ones_like(D_fake_real) # * 1.2 - tf.random.uniform(tf.shape(D_fake)) * 0.4
@@ -325,13 +324,16 @@ D_loss = D_loss_real + D_loss_fake + D_classification_loss_real + D_classificati
 # Obtain trainable variables for both networks
 train_vars = tf.trainable_variables()
 
+G_SR_vars = [var for var in train_vars if 'generator_sr' in var.name]
 G_vars = [var for var in train_vars if 'generator' in var.name]
 D_vars = [var for var in train_vars if 'discriminator' in var.name]
 
+print("Generator SR parameter count: {}".format(np.sum([np.product(v.get_shape()) for v in G_SR_vars])))
 print("Discriminator parameter count: {}".format(np.sum([np.product(v.get_shape()) for v in D_vars])))
 print("Generator parameter count: {}".format(np.sum([np.product(v.get_shape()) for v in G_vars])))
 
 learning_rate = tf.placeholder(tf.float32, shape=[])
+G_SR_opt = tf.train.AdamOptimizer(learning_rate).minimize(G_SR_pixel_loss, var_list=G_SR_vars)
 G_opt = tf.train.AdamOptimizer(learning_rate).minimize(G_loss, var_list=G_vars)
 D_opt = tf.train.AdamOptimizer(learning_rate).minimize(D_loss, var_list=D_vars)
 
@@ -352,7 +354,7 @@ for i in range(num_test_samples):
 compare_images = np.stack(compare_images)
 logger.log_images(
     compare_images, num_test_samples,
-    -1, 1, num_batches
+    -100, 1, num_batches
 )
 
 # Total number of epochs to train
@@ -362,6 +364,36 @@ num_epochs = 10
 session = tf.InteractiveSession()
 # Init Variables
 tf.global_variables_initializer().run()
+
+# Initial SR training by itself
+batch_start_time = time.time()
+for epoch in range(2):
+    lr = 1e-4
+    batch_gen = batch_generator(batch_size)
+    for n_batch, (real_images, small_images, real_labels) in batch_gen:
+        # 2. Train Generator SR
+        feed_dict = {X: real_images, X_labels: real_labels, Z: small_images, learning_rate: lr}
+        _, g_error = session.run([G_SR_opt, G_SR_pixel_loss], feed_dict=feed_dict)
+
+        # Display Progress every few batches
+        if n_batch % 2 == 0:
+            now_time = time.time()
+            elapsed = now_time - batch_start_time
+            batch_start_time = now_time
+            print("Batches took {:.3f} ms".format(elapsed * 1000))
+
+            test_images = session.run(G_sample, feed_dict={Z: test_small_images})
+
+            logger.log_images(
+                test_images, num_test_samples,
+                epoch-10, n_batch, num_batches
+            )
+            # Display status Logs
+            logger.display_status(
+                epoch, num_epochs, n_batch, num_batches,
+                -1, g_error, -1, -1, -1
+            )
+
 
 batch_start_time = time.time()
 for epoch in range(num_epochs):
@@ -384,7 +416,7 @@ for epoch in range(num_epochs):
             batch_start_time = now_time
             print("Batches took {:.3f} ms".format(elapsed * 1000))
 
-            test_images = session.run(G_sample, feed_dict={Z: test_small_images})
+            test_images = session.run(G_sample2, feed_dict={Z: test_small_images})
 
             logger.log_images(
                 test_images, num_test_samples,
