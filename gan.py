@@ -144,12 +144,12 @@ def discriminator(x):
             conv5_2 = conv_layer(conv5_1, "conv5_2")
             conv5_3 = conv_layer(conv5_2, "conv5_3")
             conv5_4 = conv_layer(conv5_3, "conv5_4")
-            pool5 = max_pool(conv5_4, "pool5")
+            #pool5 = max_pool(conv5_4, "pool5")
 
         #fully connected layer to determine if the image is fake or real
 
         with tf.variable_scope("linear"):
-            linear = layers.flatten(pool5)
+            linear = layers.flatten(conv5_4)
             linear = layers.dense(linear, 2, use_bias=False)
 
         with tf.variable_scope("out"):
