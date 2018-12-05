@@ -391,7 +391,7 @@ for epoch in range(2):
             # Display status Logs
             logger.display_status(
                 epoch, num_epochs, n_batch, num_batches,
-                -1, g_error, -1, -1, -1
+                -1, g_error, -1, [-1], [-1]
             )
 
 
