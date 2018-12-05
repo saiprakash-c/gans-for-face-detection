@@ -223,7 +223,50 @@ def generator(x):
 
         with tf.variable_scope("out"):
             out = nn.tanh(conv6)
-    return out
+
+    #Adding Refinement network
+
+    with tf.variable_scope("generator2", reuse=tf.AUTO_REUSE):
+        with tf.variable_scope("conv1"):
+            conv1 = layers.conv2d(conv6, 64, 3, strides=1, padding="same")
+            conv1 = layers.batch_normalization(conv1, scale=False)
+            conv1 = nn.relu(conv1)
+
+        with tf.variable_scope("conv2"):
+            # residual block with (up to) 8 convolution layers
+            n_conv_layers = 8;
+
+            previous = conv1
+            for i in range(n_conv_layers):
+                conv2 = layers.conv2d(previous, 64, 3, strides=1, padding="same")
+                conv2 = layers.batch_normalization(conv2, scale=False)
+                conv2 += previous
+                conv2 = nn.relu(conv2)
+                previous = conv2
+
+        with tf.variable_scope("conv3"):
+            conv3 = layers.conv2d(conv2, 64, 3, strides=1, padding="same")
+            conv3 = layers.batch_normalization(conv3, scale=False)
+            conv3 = nn.relu(conv3)
+
+        with tf.variable_scope("conv4"):
+            conv4 = layers.conv2d(conv3, 256, 3, strides=1, padding="same")
+            conv4 = layers.batch_normalization(conv4, scale=False)
+            conv4 = nn.relu(conv4)
+
+        with tf.variable_scope("conv5"):
+            conv5 = layers.conv2d(conv4, 256, 3, strides=1, padding="same")
+            conv5 = layers.batch_normalization(conv5, scale=False)
+            conv5 = nn.relu(deconv5)
+
+        with tf.variable_scope("conv6"):
+            conv6 = layers.conv2d(conv5, 3, 3, strides=1, padding="same")
+            conv6 = nn.relu(conv6)
+
+        with tf.variable_scope("out"):
+            out2 = nn.tanh(conv6)
+
+    return out,out2
 
 # real input (full size)
 X = tf.placeholder(tf.float32, shape=(None, ) + image_size_up)
@@ -233,7 +276,7 @@ X_labels = tf.placeholder(tf.float32, shape=(None, 1))
 Z = tf.placeholder(tf.float32, shape=(None, ) + image_size_in)
 
 # Generator
-G_sample = generator(Z)
+G_sample,G_sample2 = generator(Z)
 # Discriminator, has two outputs [face (1.0) vs nonface (0.0), real (1.0) vs generated (0.0)]
 D_real = discriminator(X)
 D_real_face = tf.slice(D_real, [0, 0], [-1, 1])
@@ -243,7 +286,7 @@ D_fake_face = tf.slice(D_fake, [0, 0], [-1, 1])
 D_fake_real = tf.slice(D_fake, [0, 1], [-1, 1])
 
 # Generator, MSE pixel-wise loss
-G_pixel_loss = tf.reduce_mean((G_sample - X)**2)
+G_pixel_loss = tf.reduce_mean((G_sample - X)**2) + tf.reduce_mean((G_sample2 - X)**2)
 G_adversarial_loss = tf.reduce_mean(
     nn.sigmoid_cross_entropy_with_logits(
         logits=D_fake_real, labels=tf.ones_like(D_fake_real) # * 1.2 - tf.random.uniform(tf.shape(D_fake)) * 0.4
