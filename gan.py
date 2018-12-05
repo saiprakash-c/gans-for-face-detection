@@ -33,7 +33,7 @@ image_size_in = (16, 16, 3)
 image_size_up = (64, 64, 3)
 
 #making a dictionary for vgg19 values
-data_dict = np.load('vgg16_weights.npy', encoding='latin1').item()
+data_dict = np.load('vgg19.npy', encoding='latin1').item()
 
 def data_generator():
     with open(bbox_file) as f:
