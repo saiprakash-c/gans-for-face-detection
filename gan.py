@@ -26,9 +26,9 @@ torch.manual_seed(manualSeed)
 tf.set_random_seed(manualSeed)
 
 # make dictionary of lists of all bounding boxes
-bbox_file = "WIDER_val/wider_face_split/wider_face_val_bbx_gt.txt"
+bbox_file = "WIDER_train/wider_face_split/wider_face_train_bbx_gt.txt"
 
-min_image_size = 16
+min_image_size = 64
 image_size_in = (16, 16, 3)
 image_size_up = (64, 64, 3)
 
@@ -44,7 +44,7 @@ def data_generator():
             line = line.strip()
             if image_name is None:
                 image_name = line
-                file_name = "WIDER_val/images/{}".format(image_name)
+                file_name = "WIDER_train/images/{}".format(image_name)
                 current_image = mpimg.imread(file_name)
                 current_image = np.array(current_image, dtype=np.float32) / 255.0
             elif bboxes_left is None:
@@ -61,8 +61,8 @@ def data_generator():
                     sub_image = current_image[y:y+h, x:x+w]
                     full_image = skimage.transform.resize(sub_image, (image_size_up[0], image_size_up[1]), anti_aliasing=True, mode="constant")
                     small_image = skimage.transform.resize(sub_image, (image_size_in[0], image_size_in[1]), anti_aliasing=True, mode="constant")
-                    full_image = np.array(full_image, dtype=np.float32)
-                    small_image = np.array(small_image, dtype=np.float32)
+                    full_image = np.rot90(np.array(full_image, dtype=np.float32))
+                    small_image = np.rot90(np.array(small_image, dtype=np.float32))
 
                     yield (full_image, small_image, 1)
 
@@ -75,7 +75,8 @@ def data_generator():
                     y = random.randint(0, total_h - h)
                     full_image = current_image[y:y+h, x:x+w]
                     small_image = skimage.transform.resize(full_image, (image_size_in[0], image_size_in[1]), anti_aliasing=True, mode="constant")
-                    small_image = np.array(small_image, dtype=np.float32)
+                    full_image = np.rot90(full_image)
+                    small_image = np.rot90(np.array(small_image, dtype=np.float32))
 
                     yield (full_image, small_image, 0)
 
@@ -157,29 +158,29 @@ def discriminator(x):
         return out
 
 
-def avg_pool(self, bottom, name):
+def avg_pool(bottom, name):
         return tf.nn.avg_pool(bottom, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME', name=name)
 
-def max_pool(self, bottom, name):
+def max_pool(bottom, name):
     return tf.nn.max_pool(bottom, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME', name=name)
 
-def conv_layer(self, bottom, name):
+def conv_layer(bottom, name):
     with tf.variable_scope(name):
-        filt = self.get_conv_filter(name)
+        filt = get_conv_filter(name)
 
         conv = tf.nn.conv2d(bottom, filt, [1, 1, 1, 1], padding='SAME')
 
-        conv_biases = self.get_bias(name)
+        conv_biases = get_bias(name)
         bias = tf.nn.bias_add(conv, conv_biases)
 
         relu = tf.nn.relu(bias)
         return relu
 
-def get_conv_filter(self, name):
-    return tf.constant(self.data_dict[name][0], name="filter")
+def get_conv_filter(name):
+    return tf.constant(data_dict[name][0], name="filter")
 
-def get_bias(self, name):
-    return tf.constant(self.data_dict[name][1], name="biases")
+def get_bias(name):
+    return tf.constant(data_dict[name][1], name="biases")
 """End of Addition"""
 
 def generator(x):
@@ -291,11 +292,25 @@ learning_rate = tf.placeholder(tf.float32, shape=[])
 G_opt = tf.train.AdamOptimizer(learning_rate).minimize(G_loss, var_list=G_vars)
 D_opt = tf.train.AdamOptimizer(learning_rate).minimize(D_loss, var_list=D_vars)
 
-num_test_samples = 16
+num_test_samples = 25
 _, (test_batch, test_small_images, test_labels) = next(batch_generator(num_test_samples))
 
 # Create logger instance
 logger = Logger(model_name='FACEGAN')
+
+# Write out ground truth examples, and "dumb" upscaled examples
+logger.log_images(
+    test_batch, num_test_samples,
+    -1, 0, num_batches
+)
+compare_images = []
+for i in range(num_test_samples):
+    compare_images += [skimage.transform.resize(test_small_images[i], (image_size_up[0], image_size_up[1]), anti_aliasing=True, mode="constant")]
+compare_images = np.stack(compare_images)
+logger.log_images(
+    compare_images, num_test_samples,
+    -1, 1, num_batches
+)
 
 # Total number of epochs to train
 num_epochs = 10
