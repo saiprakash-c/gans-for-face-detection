@@ -410,7 +410,7 @@ for epoch in range(num_epochs):
         _, g_error = session.run([G_opt, G_loss], feed_dict=feed_dict)
 
         # Display Progress every few batches
-        if n_batch % 1 == 0:
+        if n_batch % 2 == 0:
             now_time = time.time()
             elapsed = now_time - batch_start_time
             batch_start_time = now_time
