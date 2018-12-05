@@ -383,6 +383,7 @@ for epoch in range(2):
             print("Batches took {:.3f} ms".format(elapsed * 1000))
 
             test_images = session.run(G_sample, feed_dict={Z: test_small_images})
+            test_images = (test_images + 1.0) * 0.5
 
             logger.log_images(
                 test_images, num_test_samples,
