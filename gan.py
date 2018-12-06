@@ -396,12 +396,12 @@ for epoch in range(2):
                 epoch, num_epochs, n_batch, num_batches,
                 -1, g_error, -1, [-1], [-1]
             )
-saver.save(session, "model_sr_only.ckpt")
+saver.save(session, "./model_sr_only.ckpt")
 
 batch_start_time = time.time()
 for epoch in range(num_epochs):
     if epoch == 5:
-        saver.save(session, "model_half.ckpt")
+        saver.save(session, "./model_half.ckpt")
 
     lr = 1e-4 if epoch < 5 else 1e-5
 
@@ -434,4 +434,4 @@ for epoch in range(num_epochs):
                 epoch, num_epochs, n_batch, num_batches,
                 d_error, g_error, 0, d_pred_real, d_pred_fake
             )
-saver.save(session, "model_full.ckpt")
+saver.save(session, "./model_full.ckpt")
