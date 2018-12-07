@@ -26,9 +26,9 @@ torch.manual_seed(manualSeed)
 tf.set_random_seed(manualSeed)
 
 # make dictionary of lists of all bounding boxes
-bbox_file = "WIDER_train/wider_face_split/wider_face_train_bbx_gt.txt"
+bbox_file = "../WIDER_val/wider_face_split/wider_face_val_bbx_gt.txt"
 
-min_image_size = 64
+max_image_size = 16
 image_size_in = (16, 16, 3)
 image_size_up = (64, 64, 3)
 
@@ -44,7 +44,7 @@ def data_generator():
             line = line.strip()
             if image_name is None:
                 image_name = line
-                file_name = "WIDER_train/images/{}".format(image_name)
+                file_name = "../WIDER_val/images/{}".format(image_name)
                 current_image = mpimg.imread(file_name)
                 current_image = np.array(current_image, dtype=np.float32) / 255.0 * 2.0 - 1.0
             elif bboxes_left is None:
@@ -57,7 +57,7 @@ def data_generator():
 
                 # get sub-image and resize
                 # ignore faces that are not already smaller than our small size
-                if h > min_image_size and w > min_image_size:
+                if h < max_image_size and w < max_image_size:
                     sub_image = current_image[y:y+h, x:x+w]
                     full_image = skimage.transform.resize(sub_image, (image_size_up[0], image_size_up[1]), anti_aliasing=True, mode="constant")
                     small_image = skimage.transform.resize(sub_image, (image_size_in[0], image_size_in[1]), anti_aliasing=True, mode="constant")
@@ -69,11 +69,10 @@ def data_generator():
                     # then find a random part of the image for a non-face selection
                     total_h = current_image.shape[0]
                     total_w = current_image.shape[1]
-                    h = image_size_up[0]
-                    w = image_size_up[1]
                     x = random.randint(0, total_w - w)
                     y = random.randint(0, total_h - h)
                     full_image = current_image[y:y+h, x:x+w]
+                    full_image = skimage.transform.resize(sub_image, (image_size_up[0], image_size_up[1]), anti_aliasing=True, mode="constant")
                     small_image = skimage.transform.resize(full_image, (image_size_in[0], image_size_in[1]), anti_aliasing=True, mode="constant")
                     full_image = np.rot90(full_image)
                     small_image = np.rot90(np.array(small_image, dtype=np.float32))
@@ -321,44 +320,7 @@ D_classification_loss_fake = tf.reduce_mean(
 )
 D_loss = D_loss_real + D_loss_fake + D_classification_loss_real + D_classification_loss_fake
 
-# Obtain trainable variables for both networks
-train_vars = tf.trainable_variables()
-
-G_SR_vars = [var for var in train_vars if 'generator_sr' in var.name]
-G_vars = [var for var in train_vars if 'generator' in var.name]
-D_vars = [var for var in train_vars if 'discriminator' in var.name]
-
-print("Generator SR parameter count: {}".format(np.sum([np.product(v.get_shape()) for v in G_SR_vars])))
-print("Discriminator parameter count: {}".format(np.sum([np.product(v.get_shape()) for v in D_vars])))
-print("Generator parameter count: {}".format(np.sum([np.product(v.get_shape()) for v in G_vars])))
-
-learning_rate = tf.placeholder(tf.float32, shape=[])
-G_SR_opt = tf.train.AdamOptimizer(learning_rate).minimize(G_SR_pixel_loss, var_list=G_SR_vars)
-G_opt = tf.train.AdamOptimizer(learning_rate).minimize(G_loss, var_list=G_vars)
-D_opt = tf.train.AdamOptimizer(learning_rate).minimize(D_loss, var_list=D_vars)
-
-num_test_samples = 25
-_, (test_batch, test_small_images, test_labels) = next(batch_generator(num_test_samples))
-
-# Create logger instance
-logger = Logger(model_name='FACEGAN')
-
-# Write out ground truth examples, and "dumb" upscaled examples
-logger.log_images(
-    test_batch, num_test_samples,
-    -100, 0, num_batches
-)
-compare_images = []
-for i in range(num_test_samples):
-    compare_images += [skimage.transform.resize(test_small_images[i], (image_size_up[0], image_size_up[1]), anti_aliasing=True, mode="constant")]
-compare_images = np.stack(compare_images)
-logger.log_images(
-    compare_images, num_test_samples,
-    -100, 1, num_batches
-)
-
-# Total number of epochs to train
-num_epochs = 10
+logger = Logger(model_name='FACEGAN_EVAL')
 
 # Start interactive session
 session = tf.InteractiveSession()
@@ -366,37 +328,13 @@ session = tf.InteractiveSession()
 tf.global_variables_initializer().run()
 
 saver = tf.train.Saver()
-
-# Initial SR training by itself
-batch_start_time = time.time()
-for epoch in range(2):
-    lr = 1e-4
-    batch_gen = batch_generator(batch_size)
-    for n_batch, (real_images, small_images, real_labels) in batch_gen:
-        # 2. Train Generator SR
-        feed_dict = {X: real_images, Z: small_images, learning_rate: lr}
-        _, g_error = session.run([G_SR_opt, G_SR_pixel_loss], feed_dict=feed_dict)
-
-        # Display Progress every few batches
-        if n_batch % 2 == 0:
-            now_time = time.time()
-            elapsed = now_time - batch_start_time
-            batch_start_time = now_time
-            print("Batches took {:.3f} ms".format(elapsed * 1000))
-
-            test_images = session.run(G_sample, feed_dict={Z: test_small_images})
-            test_images = (test_images + 1.0) * 0.5
-
-            logger.log_images(
-                test_images, num_test_samples,
-                epoch-10, n_batch, num_batches
-            )
-            # Display status Logs
-            logger.display_status(
-                epoch, num_epochs, n_batch, num_batches,
-                -1, g_error, -1, [-1], [-1]
-            )
-saver.save(session, "./model_sr_only.ckpt")
+# saver.restore(session, "./model_sr_only.ckpt")
+# saver.restore(session, "./model_half.ckpt")
+# from tensorflow.core.protobuf import saver_pb2
+# import pdb; pdb.set_trace()
+# saver = tf.train.Saver(write_version = saver_pb2.SaverDef.V1)
+# saver = tf.train.import_meta_graph('/mnt/c/Users/Acshi/Documents/Devel/eecs504_final_project/ComputerVision/model_half.ckpt.meta')
+saver.restore(session, tf.train.latest_checkpoint("/mnt/c/Users/Acshi/Documents/Devel/eecs504_final_project/ComputerVision/"))
 
 real_face_sum = 0
 fake_face_sum = 0
@@ -404,24 +342,14 @@ total_sum = 0
 
 batch_start_time = time.time()
 for epoch in range(num_epochs):
-    if epoch > 0:
-        saver.save(session, "./model_{}.ckpt".format(epoch))
-
-    lr = 1e-4 if epoch < 5 else 1e-5
-
     batch_gen = batch_generator(batch_size)
     for n_batch, (real_images, small_images, real_labels) in batch_gen:
-        # 1. Train Discriminator
-        feed_dict = {X: real_images, X_labels: real_labels, Z: small_images, learning_rate: lr}
-        _, d_error, d_pred_real, d_pred_fake, d_real_face, d_fake_face = session.run([D_opt, D_loss, D_real, D_fake, D_real_face, D_fake_face], feed_dict=feed_dict)
+        feed_dict = {Z: real_images, X_labels: real_labels, Z: small_images}
+        d_real_face, d_fake_face = session.run([D_real_face, D_fake_face], feed_dict=feed_dict)
 
         real_face_sum += np.sum(d_real_face.round() == real_labels)
         fake_face_sum += np.sum(d_fake_face.round() == real_labels)
         total_sum += len(real_images)
-
-        # 2. Train Generator
-        feed_dict = {X: real_images, X_labels: real_labels, Z: small_images, learning_rate: lr}
-        _, g_error = session.run([G_opt, G_loss], feed_dict=feed_dict)
 
         # Display Progress every few batches
         if n_batch % 2 == 0:
@@ -430,19 +358,14 @@ for epoch in range(num_epochs):
             batch_start_time = now_time
             print("Batches took {:.3f} ms".format(elapsed * 1000))
 
-            test_images = session.run(G_sample2, feed_dict={Z: test_small_images})
-            test_images = (test_images + 1.0) * 0.5
-
-            logger.log_images(
-                test_images, num_test_samples,
-                epoch, n_batch, num_batches
-            )
-            # Display status Logs
-            logger.display_status(
-                epoch, num_epochs, n_batch, num_batches,
-                d_error, g_error, 0, d_pred_real, d_pred_fake
-            )
-
             print("Real accuracy ({}/{}) {:.2f}%    Fake accuracy ({}/{}) {:.2f}%".format(real_face_sum, total_sum, real_face_sum / total_sum * 100,
-                                                                                          fake_face_sum, total_sum, fake_face_sum / total_sum * 100,))
-saver.save(session, "./model_full.ckpt")
+                                                                                        fake_face_sum, total_sum, fake_face_sum / total_sum * 100,))
+        if n_batch % 10 == 0:
+            logger.log_images(
+                real_images[0:25], 25,
+                epoch, n_batch*2, num_batches
+            )
+            logger.log_images(
+                small_images[0:25], 25,
+                epoch, n_batch*2+1, num_batches
+            )
