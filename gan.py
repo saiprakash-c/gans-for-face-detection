@@ -357,6 +357,11 @@ logger.log_images(
     -100, 1, num_batches
 )
 
+logger.log_images(
+    test_small_images, num_test_samples,
+    -100, 2, num_batches
+)
+
 # Total number of epochs to train
 num_epochs = 10
 
