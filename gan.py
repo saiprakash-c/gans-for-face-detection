@@ -346,7 +346,7 @@ logger = Logger(model_name='FACEGAN')
 # Write out ground truth examples, and "dumb" upscaled examples
 logger.log_images(
     test_batch, num_test_samples,
-    -1, 0, num_batches
+    -100, 0, num_batches
 )
 compare_images = []
 for i in range(num_test_samples):
@@ -365,6 +365,8 @@ session = tf.InteractiveSession()
 # Init Variables
 tf.global_variables_initializer().run()
 
+saver = tf.train.Saver()
+
 # Initial SR training by itself
 batch_start_time = time.time()
 for epoch in range(2):
@@ -372,7 +374,7 @@ for epoch in range(2):
     batch_gen = batch_generator(batch_size)
     for n_batch, (real_images, small_images, real_labels) in batch_gen:
         # 2. Train Generator SR
-        feed_dict = {X: real_images, X_labels: real_labels, Z: small_images, learning_rate: lr}
+        feed_dict = {X: real_images, Z: small_images, learning_rate: lr}
         _, g_error = session.run([G_SR_opt, G_SR_pixel_loss], feed_dict=feed_dict)
 
         # Display Progress every few batches
@@ -383,6 +385,7 @@ for epoch in range(2):
             print("Batches took {:.3f} ms".format(elapsed * 1000))
 
             test_images = session.run(G_sample, feed_dict={Z: test_small_images})
+            test_images = (test_images + 1.0) * 0.5
 
             logger.log_images(
                 test_images, num_test_samples,
@@ -393,10 +396,13 @@ for epoch in range(2):
                 epoch, num_epochs, n_batch, num_batches,
                 -1, g_error, -1, [-1], [-1]
             )
-
+saver.save(session, "./model_sr_only.ckpt")
 
 batch_start_time = time.time()
 for epoch in range(num_epochs):
+    if epoch == 5:
+        saver.save(session, "./model_half.ckpt")
+
     lr = 1e-4 if epoch < 5 else 1e-5
 
     batch_gen = batch_generator(batch_size)
@@ -428,3 +434,4 @@ for epoch in range(num_epochs):
                 epoch, num_epochs, n_batch, num_batches,
                 d_error, g_error, 0, d_pred_real, d_pred_fake
             )
+saver.save(session, "./model_full.ckpt")
