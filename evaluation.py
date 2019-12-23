@@ -26,11 +26,14 @@ torch.manual_seed(manualSeed)
 tf.set_random_seed(manualSeed)
 
 # make dictionary of lists of all bounding boxes
-bbox_file = "WIDER_val/wider_face_split/wider_face_val_bbx_gt.txt"
+bbox_file = "../WIDER_val/wider_face_split/wider_face_val_bbx_gt.txt"
 
-min_image_size = 16
+max_image_size = 16
 image_size_in = (16, 16, 3)
 image_size_up = (64, 64, 3)
+
+#making a dictionary for vgg19 values
+data_dict = np.load('vgg19.npy', encoding='latin1').item()
 
 def data_generator():
     with open(bbox_file) as f:
@@ -41,9 +44,9 @@ def data_generator():
             line = line.strip()
             if image_name is None:
                 image_name = line
-                file_name = "WIDER_val/images/{}".format(image_name)
+                file_name = "../WIDER_val/images/{}".format(image_name)
                 current_image = mpimg.imread(file_name)
-                current_image = np.array(current_image, dtype=np.float32) / 255.0
+                current_image = np.array(current_image, dtype=np.float32) / 255.0 * 2.0 - 1.0
             elif bboxes_left is None:
                 bboxes_left = int(line)
             else:
@@ -54,25 +57,25 @@ def data_generator():
 
                 # get sub-image and resize
                 # ignore faces that are not already smaller than our small size
-                if h > min_image_size and w > min_image_size:
+                if h < max_image_size and w < max_image_size:
                     sub_image = current_image[y:y+h, x:x+w]
                     full_image = skimage.transform.resize(sub_image, (image_size_up[0], image_size_up[1]), anti_aliasing=True, mode="constant")
                     small_image = skimage.transform.resize(sub_image, (image_size_in[0], image_size_in[1]), anti_aliasing=True, mode="constant")
-                    full_image = np.array(full_image, dtype=np.float32)
-                    small_image = np.array(small_image, dtype=np.float32)
+                    full_image = np.rot90(np.array(full_image, dtype=np.float32))
+                    small_image = np.rot90(np.array(small_image, dtype=np.float32))
 
                     yield (full_image, small_image, 1)
 
                     # then find a random part of the image for a non-face selection
                     total_h = current_image.shape[0]
                     total_w = current_image.shape[1]
-                    h = image_size_up[0]
-                    w = image_size_up[1]
                     x = random.randint(0, total_w - w)
                     y = random.randint(0, total_h - h)
                     full_image = current_image[y:y+h, x:x+w]
+                    full_image = skimage.transform.resize(sub_image, (image_size_up[0], image_size_up[1]), anti_aliasing=True, mode="constant")
                     small_image = skimage.transform.resize(full_image, (image_size_in[0], image_size_in[1]), anti_aliasing=True, mode="constant")
-                    small_image = np.array(small_image, dtype=np.float32)
+                    full_image = np.rot90(full_image)
+                    small_image = np.rot90(np.array(small_image, dtype=np.float32))
 
                     yield (full_image, small_image, 0)
 
@@ -107,36 +110,79 @@ def noise(size):
     return np.random.normal(size=size)
 
 def discriminator(x):
+    """Start addition"""
     with tf.variable_scope("discriminator", reuse=tf.AUTO_REUSE):
+        #relu - convolutional layers
         with tf.variable_scope("conv1"):
-            conv1 = layers.conv2d(x, 64, 3, strides=2, padding="same", activation=nn.relu)
-            conv1 = layers.max_pooling2d(conv1, [2, 2], strides=2, padding="same")
+            conv1_1 = conv_layer(x, "conv1_1")
+            conv1_2 = conv_layer(conv1_1, "conv1_2")
+            pool1 = max_pool(conv1_2, "pool1")
+
 
         with tf.variable_scope("conv2"):
-            conv2 = layers.conv2d(conv1, 128, 3, strides=2, padding="same", activation=nn.relu)
-            conv2 = layers.max_pooling2d(conv2, [2, 2], strides=2, padding="same")
+            conv2_1 = conv_layer(pool1, "conv2_1")
+            conv2_2 = conv_layer(conv2_1, "conv2_2")
+            pool2 = max_pool(conv2_2, "pool2")
 
         with tf.variable_scope("conv3"):
-            conv3 = layers.conv2d(conv2, 256, 3, strides=2, padding="same", activation=nn.relu)
-            conv3 = layers.max_pooling2d(conv3, [2, 2], strides=2, padding="same")
+            conv3_1 = conv_layer(pool2, "conv3_1")
+            conv3_2 = conv_layer(conv3_1, "conv3_2")
+            conv3_3 = conv_layer(conv3_2, "conv3_3")
+            conv3_4 = conv_layer(conv3_3, "conv3_4")
+            pool3 = max_pool(conv3_4, "pool3")
 
         with tf.variable_scope("conv4"):
-            conv4 = layers.conv2d(conv3, 512, 3, strides=2, padding="same", activation=nn.relu)
-            conv4 = layers.max_pooling2d(conv4, [2, 2], strides=2, padding="same")
+            conv4_1 = conv_layer(pool3, "conv4_1")
+            conv4_2 = conv_layer(conv4_1, "conv4_2")
+            conv4_3 = conv_layer(conv4_2, "conv4_3")
+            conv4_4 = conv_layer(conv4_3, "conv4_4")
+            pool4 = max_pool(conv4_4, "pool4")
 
         with tf.variable_scope("conv5"):
-            conv5 = layers.conv2d(conv4, 512, 3, strides=1, padding="same", activation=nn.relu)
+            conv5_1 = conv_layer(pool4, "conv5_1")
+            conv5_2 = conv_layer(conv5_1, "conv5_2")
+            conv5_3 = conv_layer(conv5_2, "conv5_3")
+            conv5_4 = conv_layer(conv5_3, "conv5_4")
+
+        #fully connected layer to determine if the image is fake or real
 
         with tf.variable_scope("linear"):
-            linear = layers.flatten(conv5)
-            linear = layers.dense(linear, 2, use_bias=False)
+            linear = layers.flatten(conv5_4)
+            linear = layers.dense(linear, 2, use_bias=False, kernel_initializer=tf.initializers.random_normal(0.0, 0.1))
 
         with tf.variable_scope("out"):
             out = nn.sigmoid(linear)
-    return out
+
+        return out
+
+
+def avg_pool(bottom, name):
+        return tf.nn.avg_pool(bottom, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME', name=name)
+
+def max_pool(bottom, name):
+    return tf.nn.max_pool(bottom, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME', name=name)
+
+def conv_layer(bottom, name):
+    with tf.variable_scope(name):
+        filt = get_conv_filter(name)
+
+        conv = tf.nn.conv2d(bottom, filt, [1, 1, 1, 1], padding='SAME')
+
+        conv_biases = get_bias(name)
+        bias = tf.nn.bias_add(conv, conv_biases)
+
+        relu = tf.nn.relu(bias)
+        return relu
+
+def get_conv_filter(name):
+    return tf.constant(data_dict[name][0], name="filter")
+
+def get_bias(name):
+    return tf.constant(data_dict[name][1], name="biases")
+"""End of Addition"""
 
 def generator(x):
-    with tf.variable_scope("generator", reuse=tf.AUTO_REUSE):
+    with tf.variable_scope("generator_sr", reuse=tf.AUTO_REUSE, initializer=tf.initializers.random_normal(0.0, 0.02)):
         with tf.variable_scope("conv1"):
             conv1 = layers.conv2d(x, 64, 3, strides=1, padding="same")
             conv1 = layers.batch_normalization(conv1, scale=False)
@@ -171,11 +217,53 @@ def generator(x):
 
         with tf.variable_scope("conv6"):
             conv6 = layers.conv2d(deconv5, 3, 1, strides=1, padding="same")
-            conv6 = nn.relu(conv6)
 
         with tf.variable_scope("out"):
             out = nn.tanh(conv6)
-    return out
+
+    #Adding Refinement network
+    with tf.variable_scope("generator_rf", reuse=tf.AUTO_REUSE, initializer=tf.initializers.random_normal(0.0, 0.02)):
+        with tf.variable_scope("conv1"):
+            conv6 = layers.batch_normalization(conv6, scale=False)
+            conv6 = nn.relu(conv6)
+            conv1 = layers.conv2d(conv1, 64, 3, strides=1, padding="same")
+            conv1 = layers.batch_normalization(conv1, scale=False)
+            conv1 = nn.relu(conv1)
+
+        with tf.variable_scope("conv2"):
+            # residual block with (up to) 8 convolution layers
+            n_conv_layers = 8;
+
+            previous = conv1
+            for i in range(n_conv_layers):
+                conv2 = layers.conv2d(previous, 64, 3, strides=1, padding="same")
+                conv2 = layers.batch_normalization(conv2, scale=False)
+                conv2 += previous
+                conv2 = nn.relu(conv2)
+                previous = conv2
+
+        with tf.variable_scope("conv3"):
+            conv3 = layers.conv2d(conv2, 64, 3, strides=1, padding="same")
+            conv3 = layers.batch_normalization(conv3, scale=False)
+            conv3 = nn.relu(conv3)
+
+        with tf.variable_scope("conv4"):
+            conv4 = layers.conv2d(conv3, 256, 3, strides=1, padding="same")
+            conv4 = layers.batch_normalization(conv4, scale=False)
+            conv4 = nn.relu(conv4)
+
+        with tf.variable_scope("conv5"):
+            conv5 = layers.conv2d(conv4, 256, 3, strides=1, padding="same")
+            conv5 = layers.batch_normalization(conv5, scale=False)
+            conv5 = nn.relu(deconv5)
+
+        with tf.variable_scope("conv6"):
+            conv6 = layers.conv2d(conv5, 3, 3, strides=1, padding="same")
+
+        with tf.variable_scope("out"):
+            out2 = nn.tanh(conv6)
+
+    return out, out2
 
 # real input (full size)
 X = tf.placeholder(tf.float32, shape=(None, ) + image_size_up)
@@ -185,17 +273,18 @@ X_labels = tf.placeholder(tf.float32, shape=(None, 1))
 Z = tf.placeholder(tf.float32, shape=(None, ) + image_size_in)
 
 # Generator
-G_sample = generator(Z)
+G_sample, G_sample2 = generator(Z)
 # Discriminator, has two outputs [face (1.0) vs nonface (0.0), real (1.0) vs generated (0.0)]
 D_real = discriminator(X)
 D_real_face = tf.slice(D_real, [0, 0], [-1, 1])
 D_real_real = tf.slice(D_real, [0, 1], [-1, 1])
-D_fake = discriminator(G_sample)
+D_fake = discriminator(G_sample2)
 D_fake_face = tf.slice(D_fake, [0, 0], [-1, 1])
 D_fake_real = tf.slice(D_fake, [0, 1], [-1, 1])
 
 # Generator, MSE pixel-wise loss
-G_pixel_loss = tf.reduce_mean((G_sample - X)**2)
+G_SR_pixel_loss = tf.reduce_mean((G_sample - X)**2)
+G_pixel_loss = G_SR_pixel_loss + tf.reduce_mean((G_sample2 - X)**2)
 G_adversarial_loss = tf.reduce_mean(
     nn.sigmoid_cross_entropy_with_logits(
         logits=D_fake_real, labels=tf.ones_like(D_fake_real) # * 1.2 - tf.random.uniform(tf.shape(D_fake)) * 0.4
@@ -231,62 +320,52 @@ D_classification_loss_fake = tf.reduce_mean(
 )
 D_loss = D_loss_real + D_loss_fake + D_classification_loss_real + D_classification_loss_fake
 
-# Obtain trainable variables for both networks
-train_vars = tf.trainable_variables()
-
-G_vars = [var for var in train_vars if 'generator' in var.name]
-D_vars = [var for var in train_vars if 'discriminator' in var.name]
-
-print("Discriminator parameter count: {}".format(np.sum([np.product(v.get_shape()) for v in D_vars])))
-print("Generator parameter count: {}".format(np.sum([np.product(v.get_shape()) for v in G_vars])))
-
-learning_rate = tf.placeholder(tf.float32, shape=[])
-G_opt = tf.train.AdamOptimizer(learning_rate).minimize(G_loss, var_list=G_vars)
-D_opt = tf.train.AdamOptimizer(learning_rate).minimize(D_loss, var_list=D_vars)
-
-num_test_samples = 16
-_, (test_batch, test_small_images, test_labels) = next(batch_generator(num_test_samples))
-
-# Create logger instance
-logger = Logger(model_name='FACEGAN')
-
-# Total number of epochs to train
-num_epochs = 10
+logger = Logger(model_name='FACEGAN_EVAL')
 
 # Start interactive session
 session = tf.InteractiveSession()
 # Init Variables
 tf.global_variables_initializer().run()
 
+saver = tf.train.Saver()
+# saver.restore(session, "./model_sr_only.ckpt")
+# saver.restore(session, "./model_half.ckpt")
+# from tensorflow.core.protobuf import saver_pb2
+# import pdb; pdb.set_trace()
+# saver = tf.train.Saver(write_version = saver_pb2.SaverDef.V1)
+# saver = tf.train.import_meta_graph('/mnt/c/Users/Acshi/Documents/Devel/eecs504_final_project/ComputerVision/model_half.ckpt.meta')
+saver.restore(session, tf.train.latest_checkpoint("/mnt/c/Users/Acshi/Documents/Devel/eecs504_final_project/ComputerVision/"))
+
+real_face_sum = 0
+fake_face_sum = 0
+total_sum = 0
+
 batch_start_time = time.time()
 for epoch in range(num_epochs):
-    lr = 1e-4 if epoch < 5 else 1e-5
-
     batch_gen = batch_generator(batch_size)
     for n_batch, (real_images, small_images, real_labels) in batch_gen:
-        # 1. Train Discriminator
-        feed_dict = {X: real_images, X_labels: real_labels, Z: small_images, learning_rate: lr}
-        _, d_error, d_pred_real, d_pred_fake = session.run([D_opt, D_loss, D_real, D_fake], feed_dict=feed_dict)
+        feed_dict = {Z: real_images, X_labels: real_labels, Z: small_images}
+        d_real_face, d_fake_face = session.run([D_real_face, D_fake_face], feed_dict=feed_dict)
 
-        # 2. Train Generator
-        feed_dict = {X: real_images, X_labels: real_labels, Z: small_images, learning_rate: lr}
-        _, g_error = session.run([G_opt, G_loss], feed_dict=feed_dict)
+        real_face_sum += np.sum(d_real_face.round() == real_labels)
+        fake_face_sum += np.sum(d_fake_face.round() == real_labels)
+        total_sum += len(real_images)
 
         # Display Progress every few batches
-        if n_batch % 1 == 0:
+        if n_batch % 2 == 0:
             now_time = time.time()
             elapsed = now_time - batch_start_time
             batch_start_time = now_time
             print("Batches took {:.3f} ms".format(elapsed * 1000))
 
-            test_images = session.run(G_sample, feed_dict={Z: test_small_images})
-
+            print("Real accuracy ({}/{}) {:.2f}%    Fake accuracy ({}/{}) {:.2f}%".format(real_face_sum, total_sum, real_face_sum / total_sum * 100,
+                                                                                        fake_face_sum, total_sum, fake_face_sum / total_sum * 100,))
+        if n_batch % 10 == 0:
             logger.log_images(
-                test_images, num_test_samples,
-                epoch, n_batch, num_batches
+                real_images[0:25], 25,
+                epoch, n_batch*2, num_batches
             )
-            # Display status Logs
-            logger.display_status(
-                epoch, num_epochs, n_batch, num_batches,
-                d_error, g_error, 0, d_pred_real, d_pred_fake
+            logger.log_images(
+                small_images[0:25], 25,
+                epoch, n_batch*2+1, num_batches
             )

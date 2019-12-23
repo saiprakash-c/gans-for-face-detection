@@ -112,7 +112,7 @@ class Logger:
             epoch,num_epochs, n_batch, num_batches)
              )
         print('Discriminator Loss: {:.4f}, Generator Loss: {:.4f}, Classifier Loss {:.4f}'.format(float(d_error), float(g_error), float(c_error)))
-        print('D(x): {:.4f}, D(G(z)): {:.4f}'.format(float(d_pred_real.mean()), float(d_pred_fake.mean())))
+        print('D(x): {:.4f}, D(G(z)): {:.4f}'.format(float(np.mean(d_pred_real)), float(np.mean(d_pred_fake))))
 
     def save_models(self, generator, discriminator, epoch):
         out_dir = './data/models/{}'.format(self.data_subdir)
@@ -137,4 +137,4 @@ class Logger:
             os.makedirs(directory)
         except OSError as e:
             if e.errno != errno.EEXIST:
-                rais
+                raise
