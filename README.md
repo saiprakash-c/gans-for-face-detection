@@ -33,7 +33,7 @@ Pretrained model of VGG19 is obtained from [here](https://mega.nz/file/xZ8glS6J#
 
 ### Training
 
-- Keep WIDER_train folder, labels.csv and vgg19.npy (weights of vgg19) in the directory above the main directory
+- Keep WIDER_train folder and vgg19.npy (weights of vgg19) in the directory above the main directory
 - Run gan.py
 - Stores tensorflow checkpoint files for each batch and each epoch
 - The full model gets stored as `model_full.ckpt` in the main directory itself
