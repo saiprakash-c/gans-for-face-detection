@@ -17,7 +17,7 @@ if vgg19_npy_path is None:
 
 """
 
-data_dict = np.load('vgg19.npy', encoding='latin1').item()
+data_dict = np.load('../vgg19.npy', encoding='latin1').item()
 
 
 
