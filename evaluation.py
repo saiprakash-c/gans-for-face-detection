@@ -11,8 +11,6 @@ import os
 import matplotlib.image as mpimg
 import skimage.transform
 
-import torch
-import torchvision
 from utils import Logger
 
 import tensorflow as tf
@@ -22,7 +20,6 @@ import numpy as np
 # Set random seem for reproducibility
 manualSeed = 999
 np.random.seed(manualSeed)
-torch.manual_seed(manualSeed)
 tf.set_random_seed(manualSeed)
 
 # make dictionary of lists of all bounding boxes
@@ -328,13 +325,8 @@ session = tf.InteractiveSession()
 tf.global_variables_initializer().run()
 
 saver = tf.train.Saver()
-# saver.restore(session, "./model_sr_only.ckpt")
-# saver.restore(session, "./model_half.ckpt")
-# from tensorflow.core.protobuf import saver_pb2
-# import pdb; pdb.set_trace()
-# saver = tf.train.Saver(write_version = saver_pb2.SaverDef.V1)
-# saver = tf.train.import_meta_graph('/mnt/c/Users/Acshi/Documents/Devel/eecs504_final_project/ComputerVision/model_half.ckpt.meta')
-saver.restore(session, tf.train.latest_checkpoint("/mnt/c/Users/Acshi/Documents/Devel/eecs504_final_project/ComputerVision/"))
+saver.restore(session, "./model_full.ckpt")
+
 
 real_face_sum = 0
 fake_face_sum = 0

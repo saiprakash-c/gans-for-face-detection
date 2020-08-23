@@ -10,9 +10,6 @@ import os
 
 import matplotlib.image as mpimg
 import skimage.transform
-
-import torch
-import torchvision
 from utils import Logger
 
 import tensorflow as tf
@@ -26,7 +23,7 @@ torch.manual_seed(manualSeed)
 tf.set_random_seed(manualSeed)
 
 # make dictionary of lists of all bounding boxes
-bbox_file = "WIDER_train/wider_face_split/wider_face_train_bbx_gt.txt"
+bbox_file = "../WIDER_train/wider_face_split/wider_face_train_bbx_gt.txt"
 
 min_image_size = 64
 image_size_in = (16, 16, 3)
@@ -44,7 +41,7 @@ def data_generator():
             line = line.strip()
             if image_name is None:
                 image_name = line
-                file_name = "WIDER_train/images/{}".format(image_name)
+                file_name = "../WIDER_train/images/{}".format(image_name)
                 current_image = mpimg.imread(file_name)
                 current_image = np.array(current_image, dtype=np.float32) / 255.0 * 2.0 - 1.0
             elif bboxes_left is None:
